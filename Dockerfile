@@ -2,7 +2,7 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-ARG VITE_API_URL
+ARG VITE_API_URL=https://apirapidin.softnext.cl
 ENV VITE_API_URL=$VITE_API_URL
 
 COPY package*.json ./
