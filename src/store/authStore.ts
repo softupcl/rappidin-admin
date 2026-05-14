@@ -53,6 +53,7 @@ export const useAuthStore = create<AuthState>()(
                 email: response.data.email,
                 name: response.data.name,
                 lastname: response.data.lastname,
+                isActive: response.data.isActive ?? true,
                 roles: response.data.roles,
               },
               token,
