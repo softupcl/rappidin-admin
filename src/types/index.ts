@@ -1,3 +1,10 @@
+export interface UserRole {
+  id: number;
+  userId: number;
+  roleId: number;
+  role: Role;
+}
+
 export interface User {
   id: number;
   email: string;
@@ -6,15 +13,18 @@ export interface User {
   phone?: string;
   image?: string;
   isActive: boolean;
-  roles: Role[];
+  isOnline?: boolean;
+  lastSeen?: string;
+  roles: UserRole[];
   createdAt: string;
 }
 
-export interface Role {
-  id: number;
-  name: string;
-  description?: string;
-}
+export type UserRoleFilter = 'all' | 'restaurante' | 'repartidor';
+
+export const ROLE_MAPPINGS = {
+  restaurante: 'RESTAURANTE',
+  repartidor: 'REPARTIDOR',
+} as const;
 
 export interface Category {
   id: number;
@@ -92,6 +102,7 @@ export interface Delivery {
   id: number;
   user: User;
   isAvailable: boolean;
+  isOnline: boolean;
   currentLat?: number;
   currentLng?: number;
   activeOrders: number;

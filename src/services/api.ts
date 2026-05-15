@@ -114,8 +114,20 @@ export const usersService = {
     const { data } = await api.get('/admin/users');
     return data;
   },
+  create: async (user: any) => {
+    const { data } = await api.post('/admin/users', user);
+    return data;
+  },
+  update: async (id: number, user: any) => {
+    const { data } = await api.put(`/admin/users/${id}`, user);
+    return data;
+  },
+  delete: async (id: number) => {
+    const { data } = await api.delete(`/admin/users/${id}`);
+    return data;
+  },
   updateStatus: async (id: number, isActive: boolean) => {
-    const { data } = await api.put(`/admin/users/${id}/status`, { isActive });
+    const { data } = await api.put('/admin/users/${id}/status', { isActive });
     return data;
   },
 };
