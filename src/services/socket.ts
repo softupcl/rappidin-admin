@@ -68,8 +68,16 @@ class SocketService {
     this.adminSocket?.on('new_order', callback);
   }
 
+  onOrderTaken(callback: (data: { orderId: number; deliveryId: number; delivery?: { name: string; lastname: string; phone?: string } }) => void) {
+    this.adminSocket?.on('order_taken', callback);
+  }
+
   onOrderAssigned(callback: (data: { orderId: number; deliveryName: string }) => void) {
     this.adminSocket?.on('order_assigned', callback);
+  }
+
+  onOrderStatusChanged(callback: (data: { orderId: number; status: string; deliveryId?: number }) => void) {
+    this.adminSocket?.on('order_status_changed', callback);
   }
 
   getSocket() {

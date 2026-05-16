@@ -77,6 +77,9 @@ export interface Order {
   timestamp: number;
   lat?: number;
   lng?: number;
+  takenAt?: string;
+  deliveredAt?: string;
+  paymentMethod?: string;
   clientId: number;
   deliveryId?: number;
   addressId: number;

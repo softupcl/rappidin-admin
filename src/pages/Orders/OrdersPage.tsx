@@ -19,9 +19,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { ordersService, deliveriesService } from '@/services/api';
-import { Order, OrderStatus } from '@/types';
-import { Search, Eye, Truck, Check, X, Package, MapPin } from 'lucide-react';
+import { ordersService } from '@/services/api';
+import { socketService } from '@/services/socket';
+import { Search, Eye, Truck, X, Package, Check, MapPin, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string }> = {
@@ -35,26 +35,59 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string }> = {
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [deliveries, setDeliveries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [assignDialog, setAssignDialog] = useState(false);
-  const [selectedDelivery, setSelectedDelivery] = useState<number | null>(null);
+  const [updatingOrderId, setUpdatingOrderId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    socketService.connectAdmin();
+
+    socketService.onOrderTaken(({ orderId, deliveryId, delivery }) => {
+      setOrders((prevOrders) =>
+        prevOrders.map((order) => {
+          if (order.id === orderId) {
+            return {
+              ...order,
+              status: 'EN CAMINO',
+              delivery: delivery
+                ? { id: deliveryId, name: delivery.name, lastname: delivery.lastname }
+                : order.delivery,
+            };
+          }
+          return order;
+        })
+      );
+    });
+
+    socketService.onOrderStatusChanged(({ orderId, status }) => {
+      setOrders((prevOrders) =>
+        prevOrders.map((order) => {
+          if (order.id === orderId) {
+            return {
+              ...order,
+              status,
+            };
+          }
+          return order;
+        })
+      );
+    });
+
+    return () => {
+      socketService.disconnectAdmin();
+    };
+  }, []);
+
   const fetchData = async () => {
     try {
-      const [ordersData, deliveriesData] = await Promise.all([
-        ordersService.getAll(),
-        deliveriesService.getAll(),
-      ]);
+      const ordersData = await ordersService.getAll();
       setOrders(ordersData);
-      setDeliveries(deliveriesData);
     } catch (error) {
       console.error('Error:', error);
     } finally {
@@ -62,24 +95,15 @@ export default function OrdersPage() {
     }
   };
 
-  const handleAssignDelivery = async () => {
-    if (!selectedOrder || !selectedDelivery) return;
-    try {
-      await ordersService.assignDelivery(selectedOrder.id, selectedDelivery);
-      await fetchData();
-      setAssignDialog(false);
-      setSelectedDelivery(null);
-    } catch (error) {
-      console.error('Error:', error);
-    }
-  };
-
   const handleUpdateStatus = async (orderId: number, status: OrderStatus) => {
+    setUpdatingOrderId(orderId);
     try {
       await ordersService.updateStatus(orderId, status);
       await fetchData();
     } catch (error) {
       console.error('Error:', error);
+    } finally {
+      setUpdatingOrderId(null);
     }
   };
 
@@ -166,54 +190,64 @@ export default function OrdersPage() {
                       {STATUS_CONFIG[order.status]?.label}
                     </Badge>
                     <div className="flex gap-1">
-                      {order.status === 'PENDIENTE' && (
-                        <>
-                          <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'EN PREPARACION')}>
-                            <Package className="h-4 w-4 mr-1" /> Prep
-                          </Button>
-                          <Button size="sm" onClick={() => { setSelectedOrder(order); setAssignDialog(true); }}>
-                            <Truck className="h-4 w-4 mr-1" /> Asignar
-                          </Button>
-                        </>
-                      )}
-                      {order.status === 'EN PREPARACION' && (
-                        <>
-                          <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(order.id, 'PENDIENTE')}>
-                            ← Volver
-                          </Button>
-                          <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'DESPACHADO')}>
-                            <Truck className="h-4 w-4 mr-1" /> Despachar
-                          </Button>
-                        </>
-                      )}
-                      {order.status === 'DESPACHADO' && (
-                        <>
-                          <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(order.id, 'EN PREPARACION')}>
-                            ← Preparación
-                          </Button>
-                          <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'EN CAMINO')}>
-                            <Check className="h-4 w-4 mr-1" /> En Camino
-                          </Button>
-                        </>
-                      )}
-                      {order.status === 'EN CAMINO' && (
-                        <>
-                          <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(order.id, 'DESPACHADO')}>
-                            ← Despachado
-                          </Button>
-                          <Button size="sm" className="bg-green-600" onClick={() => handleUpdateStatus(order.id, 'ENTREGADO')}>
-                            <Check className="h-4 w-4 mr-1" /> Entregado
-                          </Button>
-                        </>
-                      )}
-                      {order.status !== 'ENTREGADO' && order.status !== 'CANCELADO' && (
-                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleUpdateStatus(order.id, 'CANCELADO')}>
-                          <X className="h-4 w-4" />
+                      {updatingOrderId === order.id ? (
+                        <Button size="sm" disabled>
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" /> Actualizando...
                         </Button>
+                      ) : (
+                        <>
+                          {order.status === 'PENDIENTE' && (
+                            <>
+                              <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'EN PREPARACION')}>
+                                <Package className="h-4 w-4 mr-1" /> Prep
+                              </Button>
+                              <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'DESPACHADO')}>
+                                <Truck className="h-4 w-4 mr-1" /> Despachar
+                              </Button>
+                            </>
+                          )}
+                          {order.status === 'EN PREPARACION' && (
+                            <>
+                              <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(order.id, 'PENDIENTE')}>
+                                ← Volver
+                              </Button>
+                              <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'DESPACHADO')}>
+                                <Truck className="h-4 w-4 mr-1" /> Despachar
+                              </Button>
+                            </>
+                          )}
+                          {order.status === 'DESPACHADO' && (
+                            <>
+                              <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(order.id, 'EN PREPARACION')}>
+                                ← Preparación
+                              </Button>
+                              {order.delivery && (
+                                <p className="text-xs text-muted-foreground flex items-center">
+                                  {order.delivery.name} en camino
+                                </p>
+                              )}
+                            </>
+                          )}
+                          {order.status === 'EN CAMINO' && (
+                            <>
+                              <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(order.id, 'DESPACHADO')}>
+                                ← Despachado
+                              </Button>
+                              <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => handleUpdateStatus(order.id, 'ENTREGADO')}>
+                                <Check className="h-4 w-4 mr-1" /> Entregado
+                              </Button>
+                            </>
+                          )}
+                          {order.status !== 'ENTREGADO' && order.status !== 'CANCELADO' && (
+                            <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleUpdateStatus(order.id, 'CANCELADO')}>
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button size="sm" variant="ghost" onClick={() => setSelectedOrder(order)}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </>
                       )}
-                      <Button size="sm" variant="ghost" onClick={() => setSelectedOrder(order)}>
-                        <Eye className="h-4 w-4" />
-                      </Button>
                     </div>
                   </div>
                 </div>
@@ -223,7 +257,7 @@ export default function OrdersPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={!!selectedOrder && !assignDialog} onOpenChange={() => setSelectedOrder(null)}>
+      <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Detalle del Pedido #{selectedOrder?.id}</DialogTitle>
@@ -247,10 +281,46 @@ export default function OrdersPage() {
                   <p>{selectedOrder.client?.phone || 'N/A'}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Fecha</p>
-                  <p>{new Date(selectedOrder.timestamp * 1000).toLocaleString('es-CL')}</p>
+                  <p className="text-sm text-muted-foreground">Fecha Solicitud</p>
+                  <p>{new Date(selectedOrder.timestamp).toLocaleString('es-CL')}</p>
                 </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Forma de Pago</p>
+                  <p className="capitalize">{selectedOrder.paymentMethod || 'Efectivo'}</p>
+                </div>
+                {selectedOrder.takenAt && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Hora de Salida</p>
+                    <p>{new Date(selectedOrder.takenAt).toLocaleString('es-CL')}</p>
+                  </div>
+                )}
+                {selectedOrder.deliveredAt && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Hora de Entrega</p>
+                    <p>{new Date(selectedOrder.deliveredAt).toLocaleString('es-CL')}</p>
+                  </div>
+                )}
               </div>
+              
+              {selectedOrder.delivery && (
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Repartidor Asignado</p>
+                  <div className="flex items-center justify-between p-3 bg-surface rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Truck className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{selectedOrder.delivery.name} {selectedOrder.delivery.lastname}</p>
+                        {selectedOrder.delivery.phone && (
+                          <p className="text-sm text-muted-foreground">{selectedOrder.delivery.phone}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {selectedOrder.address && (
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Dirección</p>
@@ -271,10 +341,10 @@ export default function OrdersPage() {
                         </div>
                         <div>
                           <p className="font-medium">{op.product?.name}</p>
-                          <p className="text-sm text-muted-foreground">${op.product?.price?.toFixed(2)} x {op.quantity}</p>
+                          <p className="text-sm text-muted-foreground">${Math.round(op.product?.price || 0)} x {op.quantity}</p>
                         </div>
                       </div>
-                      <p className="font-semibold">${((op.product?.price || 0) * op.quantity).toFixed(2)}</p>
+                      <p className="font-semibold">${Math.round((op.product?.price || 0) * op.quantity)}</p>
                     </div>
                   ))}
                 </div>
@@ -283,31 +353,6 @@ export default function OrdersPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setSelectedOrder(null)}>Cerrar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={assignDialog} onOpenChange={setAssignDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Asignar Delivery</DialogTitle>
-            <DialogDescription>Selecciona un delivery para el pedido #{selectedOrder?.id}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <Select value={selectedDelivery?.toString() || ''} onValueChange={(v) => setSelectedDelivery(parseInt(v))}>
-              <SelectTrigger><SelectValue placeholder="Elige un delivery" /></SelectTrigger>
-              <SelectContent>
-                {deliveries.filter((d) => d.isAvailable).map((d) => (
-                  <SelectItem key={d.id} value={d.id.toString()}>
-                    {d.user.name} {d.user.lastname} - {d.activeOrders} pedidos
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAssignDialog(false)}>Cancelar</Button>
-            <Button onClick={handleAssignDelivery} disabled={!selectedDelivery}>Asignar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
