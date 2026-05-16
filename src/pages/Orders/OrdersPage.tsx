@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils';
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string }> = {
   PENDIENTE: { label: 'Pendiente', bg: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+  'EN PREPARACION': { label: 'En Preparación', bg: 'bg-orange-100 text-orange-700 border-orange-200' },
   DESPACHADO: { label: 'Despachado', bg: 'bg-blue-100 text-blue-700 border-blue-200' },
   'EN CAMINO': { label: 'En Camino', bg: 'bg-purple-100 text-purple-700 border-purple-200' },
   ENTREGADO: { label: 'Entregado', bg: 'bg-green-100 text-green-700 border-green-200' },
@@ -130,6 +131,7 @@ export default function OrdersPage() {
               <SelectContent>
                 <SelectItem value="all">Todos</SelectItem>
                 <SelectItem value="PENDIENTE">Pendiente</SelectItem>
+                <SelectItem value="EN PREPARACION">En Preparación</SelectItem>
                 <SelectItem value="DESPACHADO">Despachado</SelectItem>
                 <SelectItem value="EN CAMINO">En Camino</SelectItem>
                 <SelectItem value="ENTREGADO">Entregado</SelectItem>
@@ -165,19 +167,44 @@ export default function OrdersPage() {
                     </Badge>
                     <div className="flex gap-1">
                       {order.status === 'PENDIENTE' && (
-                        <Button size="sm" onClick={() => { setSelectedOrder(order); setAssignDialog(true); }}>
-                          <Truck className="h-4 w-4 mr-1" /> Asignar
-                        </Button>
+                        <>
+                          <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'EN PREPARACION')}>
+                            <Package className="h-4 w-4 mr-1" /> Prep
+                          </Button>
+                          <Button size="sm" onClick={() => { setSelectedOrder(order); setAssignDialog(true); }}>
+                            <Truck className="h-4 w-4 mr-1" /> Asignar
+                          </Button>
+                        </>
+                      )}
+                      {order.status === 'EN PREPARACION' && (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(order.id, 'PENDIENTE')}>
+                            ← Volver
+                          </Button>
+                          <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'DESPACHADO')}>
+                            <Truck className="h-4 w-4 mr-1" /> Despachar
+                          </Button>
+                        </>
                       )}
                       {order.status === 'DESPACHADO' && (
-                        <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(order.id, 'EN CAMINO')}>
-                          <Check className="h-4 w-4 mr-1" /> En Camino
-                        </Button>
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(order.id, 'EN PREPARACION')}>
+                            ← Preparación
+                          </Button>
+                          <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'EN CAMINO')}>
+                            <Check className="h-4 w-4 mr-1" /> En Camino
+                          </Button>
+                        </>
                       )}
                       {order.status === 'EN CAMINO' && (
-                        <Button size="sm" className="bg-green-600" onClick={() => handleUpdateStatus(order.id, 'ENTREGADO')}>
-                          <Check className="h-4 w-4 mr-1" /> Entregado
-                        </Button>
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(order.id, 'DESPACHADO')}>
+                            ← Despachado
+                          </Button>
+                          <Button size="sm" className="bg-green-600" onClick={() => handleUpdateStatus(order.id, 'ENTREGADO')}>
+                            <Check className="h-4 w-4 mr-1" /> Entregado
+                          </Button>
+                        </>
                       )}
                       {order.status !== 'ENTREGADO' && order.status !== 'CANCELADO' && (
                         <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleUpdateStatus(order.id, 'CANCELADO')}>
