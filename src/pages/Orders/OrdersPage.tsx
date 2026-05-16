@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useEffect, useState, useMemo } from 'react';
+import { ColumnDef } from '@tanstack/react-table';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { DataTable } from '@/components/ui/data-table';
 import {
   Select,
   SelectContent,
@@ -21,8 +22,10 @@ import {
 } from '@/components/ui/dialog';
 import { ordersService } from '@/services/api';
 import { socketService } from '@/services/socket';
+import { Order, OrderStatus, User } from '@/types';
 import { Search, Eye, Truck, X, Package, Check, MapPin, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+
+import { useToast } from '@/hooks/use-toast';
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string }> = {
   PENDIENTE: { label: 'Pendiente', bg: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
@@ -34,6 +37,7 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string }> = {
 };
 
 export default function OrdersPage() {
+  const { toast } = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -56,7 +60,7 @@ export default function OrdersPage() {
               ...order,
               status: 'EN CAMINO',
               delivery: delivery
-                ? { id: deliveryId, name: delivery.name, lastname: delivery.lastname }
+                ? { id: deliveryId, name: delivery.name, lastname: delivery.lastname } as User
                 : order.delivery,
             };
           }
@@ -71,12 +75,21 @@ export default function OrdersPage() {
           if (order.id === orderId) {
             return {
               ...order,
-              status,
+              status: status as OrderStatus,
             };
           }
           return order;
         })
       );
+    });
+
+    socketService.onNewOrder((newOrder) => {
+      toast({ title: `Nuevo pedido recibido #${newOrder.id}` });
+      setOrders((prevOrders) => {
+        // Asegurarse de que no exista para evitar duplicados en strict mode
+        if (prevOrders.some((o) => o.id === newOrder.id)) return prevOrders;
+        return [newOrder, ...prevOrders];
+      });
     });
 
     return () => {
@@ -107,14 +120,129 @@ export default function OrdersPage() {
     }
   };
 
-  const filteredOrders = orders.filter((order) => {
+  const filteredOrders = useMemo(() => orders.filter((order) => {
     const matchesSearch =
       order.id.toString().includes(searchTerm) ||
       order.client?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.client?.lastname?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
     return matchesSearch && matchesStatus;
-  });
+  }), [orders, searchTerm, statusFilter]);
+
+  const columns: ColumnDef<Order>[] = [
+    {
+      accessorKey: 'id',
+      header: 'ID',
+      cell: ({ row }) => (
+        <span className="font-bold text-primary text-sm">#{row.original.id}</span>
+      ),
+    },
+    {
+      accessorKey: 'client',
+      header: 'Cliente',
+      cell: ({ row }) => (
+        <div className="min-w-[180px]">
+          <p className="font-medium text-sm">{row.original.client?.name} {row.original.client?.lastname}</p>
+          <p className="text-xs text-muted-foreground">{row.original.client?.phone || ''}</p>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'products',
+      header: 'Productos',
+      cell: ({ row }) => (
+        <span className="text-sm">{row.original.products?.length || 0}</span>
+      ),
+    },
+    {
+      accessorKey: 'delivery',
+      header: 'Repartidor',
+      cell: ({ row }) =>
+        row.original.delivery ? (
+          <span className="text-sm">{row.original.delivery.name} {row.original.delivery.lastname}</span>
+        ) : (
+          <span className="text-sm text-muted-foreground">-</span>
+        ),
+    },
+    {
+      accessorKey: 'status',
+      header: 'Estado',
+      cell: ({ row }) => (
+        <Badge className={STATUS_CONFIG[row.original.status]?.bg}>
+          {STATUS_CONFIG[row.original.status]?.label}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: 'timestamp',
+      header: 'Fecha',
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground whitespace-nowrap">
+          {new Date(row.original.timestamp).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+        </span>
+      ),
+    },
+    {
+      id: 'actions',
+      cell: ({ row }) => {
+        const order = row.original;
+        if (updatingOrderId === order.id) {
+          return (
+            <Button size="sm" disabled>
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" /> Actualizando...
+            </Button>
+          );
+        }
+        return (
+          <div className="flex items-center gap-1">
+            {order.status === 'PENDIENTE' && (
+              <>
+                <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'EN PREPARACION')}>
+                  <Package className="h-4 w-4 mr-1" /> Prep
+                </Button>
+                <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'DESPACHADO')}>
+                  <Truck className="h-4 w-4 mr-1" /> Despachar
+                </Button>
+              </>
+            )}
+            {order.status === 'EN PREPARACION' && (
+              <>
+                <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(order.id, 'PENDIENTE')}>
+                  ← Volver
+                </Button>
+                <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'DESPACHADO')}>
+                  <Truck className="h-4 w-4 mr-1" /> Despachar
+                </Button>
+              </>
+            )}
+            {order.status === 'DESPACHADO' && (
+              <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(order.id, 'EN PREPARACION')}>
+                ← Preparación
+              </Button>
+            )}
+            {order.status === 'EN CAMINO' && (
+              <>
+                <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(order.id, 'DESPACHADO')}>
+                  ← Despachado
+                </Button>
+                <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => handleUpdateStatus(order.id, 'ENTREGADO')}>
+                  <Check className="h-4 w-4 mr-1" /> Entregado
+                </Button>
+              </>
+            )}
+            {order.status !== 'ENTREGADO' && order.status !== 'CANCELADO' && (
+              <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleUpdateStatus(order.id, 'CANCELADO')}>
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" onClick={() => setSelectedOrder(order)}>
+              <Eye className="h-4 w-4" />
+            </Button>
+          </div>
+        );
+      },
+    },
+  ];
 
   if (loading) {
     return (
@@ -165,95 +293,11 @@ export default function OrdersPage() {
           </div>
         </CardHeader>
         <CardContent className="pt-4">
-          {filteredOrders.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">No hay pedidos</p>
-          ) : (
-            <div className="space-y-3">
-              {filteredOrders.map((order) => (
-                <div key={order.id} className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl border border-border hover:bg-surface transition-colors gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                      <span className="text-sm font-bold text-primary">#{order.id}</span>
-                    </div>
-                    <div>
-                      <p className="font-medium">
-                        {order.client?.name} {order.client?.lastname}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {order.products?.length || 0} productos
-                        {order.delivery && ` • ${order.delivery.name}`}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge className={STATUS_CONFIG[order.status]?.bg}>
-                      {STATUS_CONFIG[order.status]?.label}
-                    </Badge>
-                    <div className="flex gap-1">
-                      {updatingOrderId === order.id ? (
-                        <Button size="sm" disabled>
-                          <Loader2 className="h-4 w-4 mr-1 animate-spin" /> Actualizando...
-                        </Button>
-                      ) : (
-                        <>
-                          {order.status === 'PENDIENTE' && (
-                            <>
-                              <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'EN PREPARACION')}>
-                                <Package className="h-4 w-4 mr-1" /> Prep
-                              </Button>
-                              <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'DESPACHADO')}>
-                                <Truck className="h-4 w-4 mr-1" /> Despachar
-                              </Button>
-                            </>
-                          )}
-                          {order.status === 'EN PREPARACION' && (
-                            <>
-                              <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(order.id, 'PENDIENTE')}>
-                                ← Volver
-                              </Button>
-                              <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'DESPACHADO')}>
-                                <Truck className="h-4 w-4 mr-1" /> Despachar
-                              </Button>
-                            </>
-                          )}
-                          {order.status === 'DESPACHADO' && (
-                            <>
-                              <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(order.id, 'EN PREPARACION')}>
-                                ← Preparación
-                              </Button>
-                              {order.delivery && (
-                                <p className="text-xs text-muted-foreground flex items-center">
-                                  {order.delivery.name} en camino
-                                </p>
-                              )}
-                            </>
-                          )}
-                          {order.status === 'EN CAMINO' && (
-                            <>
-                              <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(order.id, 'DESPACHADO')}>
-                                ← Despachado
-                              </Button>
-                              <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => handleUpdateStatus(order.id, 'ENTREGADO')}>
-                                <Check className="h-4 w-4 mr-1" /> Entregado
-                              </Button>
-                            </>
-                          )}
-                          {order.status !== 'ENTREGADO' && order.status !== 'CANCELADO' && (
-                            <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleUpdateStatus(order.id, 'CANCELADO')}>
-                              <X className="h-4 w-4" />
-                            </Button>
-                          )}
-                          <Button size="sm" variant="ghost" onClick={() => setSelectedOrder(order)}>
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <DataTable
+            columns={columns}
+            data={filteredOrders}
+            totalItems={filteredOrders.length}
+          />
         </CardContent>
       </Card>
 

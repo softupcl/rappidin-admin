@@ -1,10 +1,12 @@
 import { useEffect, useState, useMemo } from 'react';
+import { ColumnDef } from '@tanstack/react-table';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { DataTable } from '@/components/ui/data-table';
 import {
   Dialog,
   DialogContent,
@@ -13,15 +15,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { usersService } from '@/services/api';
-import { UserRoleFilter, ROLE_MAPPINGS } from '@/types';
+import { UserRoleFilter, ROLE_MAPPINGS, User } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { Search, Plus, Pencil, Trash2, CheckCircle, XCircle, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -32,17 +27,15 @@ const ROLES = [
 ];
 
 export default function UsersPage() {
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<UserRoleFilter>('all');
   const { toast } = useToast();
-  const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [userToDelete, setUserToDelete] = useState<any | null>(null);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [formData, setFormData] = useState({
     email: '',
     name: '',
@@ -131,9 +124,9 @@ export default function UsersPage() {
     setIsDialogOpen(true);
   };
 
-  const openEditDialog = (user: any) => {
+  const openEditDialog = (user: User) => {
     setEditingUser(user);
-    const userRoles = user.roles.map((r: any) => r.role?.name?.toLowerCase());
+    const userRoles = user.roles.map((r) => r.role?.name?.toLowerCase());
     setFormData({
       email: user.email,
       name: user.name,
@@ -146,7 +139,7 @@ export default function UsersPage() {
     setIsDialogOpen(true);
   };
 
-  const openDeleteDialog = (user: any) => {
+  const openDeleteDialog = (user: User) => {
     setUserToDelete(user);
     setIsDeleteDialogOpen(true);
   };
@@ -155,13 +148,10 @@ export default function UsersPage() {
     return users.filter((user) => {
       const matchesSearch = (user.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (user.email || '').toLowerCase().includes(searchTerm.toLowerCase());
       const dbRole = roleFilter === 'all' ? null : ROLE_MAPPINGS[roleFilter];
-      const matchesRole = roleFilter === 'all' || (user.roles || []).some((r: any) => r.role?.name === dbRole);
+      const matchesRole = roleFilter === 'all' || (user.roles || []).some((r) => r.role?.name === dbRole);
       return matchesSearch && matchesRole;
     });
   }, [users, searchTerm, roleFilter]);
-
-  const paginatedUsers = useMemo(() => filteredUsers.slice((currentPage - 1) * pageSize, currentPage * pageSize), [filteredUsers, currentPage]);
-  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
 
   const getRoleColor = (role: string) => {
     switch (role) {
@@ -172,6 +162,70 @@ export default function UsersPage() {
       default: return 'bg-gray-100 text-gray-700';
     }
   };
+
+  const columns: ColumnDef<User>[] = [
+    {
+      accessorKey: 'name',
+      header: 'Usuario',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-3 min-w-[220px]">
+          <Avatar className="h-9 w-9 border border-muted">
+            <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+              {row.original.name?.[0]}{row.original.lastname?.[0]}
+            </AvatarFallback>
+          </Avatar>
+          <div>
+            <p className="font-medium text-sm">{row.original.name} {row.original.lastname}</p>
+            <p className="text-xs text-muted-foreground">{row.original.email}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'roles',
+      header: 'Roles',
+      cell: ({ row }) => (
+        <div className="flex flex-wrap gap-1">
+          {row.original.roles.map((userRole, idx) => (
+            <Badge key={idx} className={cn('text-xs', getRoleColor(userRole.role?.name || ''))}>
+              {userRole.role?.name}
+            </Badge>
+          ))}
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'phone',
+      header: 'Teléfono',
+      cell: ({ row }) => <span className="text-sm">{row.original.phone || '-'}</span>,
+    },
+    {
+      accessorKey: 'isActive',
+      header: 'Estado',
+      cell: ({ row }) => (
+        <Badge className={cn('gap-1', row.original.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600')}>
+          {row.original.isActive ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+          {row.original.isActive ? 'Activo' : 'Inactivo'}
+        </Badge>
+      ),
+    },
+    {
+      id: 'actions',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1">
+          <Button size="sm" variant="ghost" onClick={() => openEditDialog(row.original)}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => openDeleteDialog(row.original)}>
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+          <Button size="sm" variant={row.original.isActive ? 'outline' : 'default'} className="gap-2" onClick={() => handleToggleStatus(row.original.id, row.original.isActive)}>
+            {row.original.isActive ? <><XCircle className="h-4 w-4" /> Desactivar</> : <><CheckCircle className="h-4 w-4" /> Activar</>}
+          </Button>
+        </div>
+      ),
+    },
+  ];
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" /></div>;
 
@@ -205,53 +259,11 @@ export default function UsersPage() {
           </div>
         </CardHeader>
         <CardContent className="pt-4">
-          <div className="space-y-3">
-            {paginatedUsers.map((user) => (
-              <div key={user.id} className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-xl border border-border hover:bg-surface transition-colors gap-4">
-                <div className="flex items-center gap-4">
-                  <Avatar className="h-10 w-10 border-2 border-muted">
-                    <AvatarFallback className="bg-primary/10 text-primary font-semibold">{user.name?.[0]}{user.lastname?.[0]}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-medium">{user.name} {user.lastname}</p>
-                    <p className="text-sm text-muted-foreground">{user.email}</p>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {user.roles.map((userRole: any, idx: number) => (
-                        <Badge key={idx} className={cn('text-xs', getRoleColor(userRole.role?.name || ''))}>{userRole.role?.name}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <Badge className={cn('gap-1', user.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600')}>
-                    {user.isActive ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-                    {user.isActive ? 'Activo' : 'Inactivo'}
-                  </Badge>
-                  <div className="flex gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => openEditDialog(user)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => openDeleteDialog(user)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                    <Button size="sm" variant={user.isActive ? 'outline' : 'default'} className="gap-2" onClick={() => handleToggleStatus(user.id, user.isActive)}>
-                      {user.isActive ? <><XCircle className="h-4 w-4" /> Desactivar</> : <><CheckCircle className="h-4 w-4" /> Activar</>}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4 pt-4 border-t">
-              <p className="text-sm text-muted-foreground">{filteredUsers.length} usuarios</p>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" disabled={currentPage === 1} onClick={() => setCurrentPage(currentPage - 1)}>Anterior</Button>
-                <span className="text-sm py-1">Página {currentPage} de {totalPages}</span>
-                <Button size="sm" variant="outline" disabled={currentPage === totalPages} onClick={() => setCurrentPage(currentPage + 1)}>Siguiente</Button>
-              </div>
-            </div>
-          )}
+          <DataTable
+            columns={columns}
+            data={filteredUsers}
+            totalItems={filteredUsers.length}
+          />
         </CardContent>
       </Card>
 

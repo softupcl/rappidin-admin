@@ -49,8 +49,6 @@ export function DataTable<TData, TValue>({
   searchPlaceholder = 'Buscar...',
   searchColumn,
   pageSizeOptions = [10, 20, 50, 100],
-  currentPage = 1,
-  totalPages = 1,
   totalItems = 0,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -160,6 +158,9 @@ export function DataTable<TData, TValue>({
 
       <div className="flex items-center justify-between px-2">
         <div className="flex items-center gap-4">
+          <span className="text-sm text-muted-foreground">
+            {table.getFilteredRowModel().rows.length} resultados
+          </span>
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Filas por página:</span>
             <Select
@@ -182,7 +183,7 @@ export function DataTable<TData, TValue>({
 
         <div className="flex items-center gap-1">
           <span className="text-sm text-muted-foreground mr-2">
-            Página {currentPage} de {totalPages}
+            Página {table.getState().pagination.pageIndex + 1} de {table.getPageCount()}
           </span>
           <Button
             variant="outline"
