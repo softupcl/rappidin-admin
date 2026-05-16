@@ -86,7 +86,7 @@ export interface Order {
   products: OrderProduct[];
 }
 
-export type OrderStatus = 'PENDIENTE' | 'DESPACHADO' | 'EN CAMINO' | 'ENTREGADO' | 'CANCELADO';
+export type OrderStatus = 'PENDIENTE' | 'EN PREPARACION' | 'DESPACHADO' | 'EN CAMINO' | 'ENTREGADO' | 'CANCELADO';
 
 export interface BusinessConfig {
   id: number;
